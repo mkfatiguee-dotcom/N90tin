@@ -1,0 +1,76 @@
+name: Europe-Only-VPN
+
+on:
+  workflow_dispatch:
+
+jobs:
+  vpn:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check server location (Europe only)
+        run: |
+          IP=$(curl -s ifconfig.me)
+          COUNTRY=$(curl -s ipinfo.io/$IP/country)
+          CITY=$(curl -s ipinfo.io/$IP/city)
+          echo "🌍 Server: $CITY, $COUNTRY"
+
+          # السماح فقط بأوروبا (ألمانيا/فرنسا/هولندا/بريطانيا)
+          if [[ "$COUNTRY" != "DE" && "$COUNTRY" != "FR" && "$COUNTRY" != "NL" && "$COUNTRY" != "GB" ]]; then
+            echo "❌ Not in Europe. Stopping workflow."
+            exit 1
+          fi
+
+      - name: Install WireGuard and setup VPN
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard qrencode curl
+
+          # مفاتيح
+          wg genkey | tee server_private.key | wg pubkey > server_public.key
+          wg genkey | tee client_private.key | wg pubkey > client_public.key
+
+          SERVER_PRIV=$(cat server_private.key)
+          SERVER_PUB=$(cat server_public.key)
+          CLIENT_PRIV=$(cat client_private.key)
+          CLIENT_PUB=$(cat client_public.key)
+
+          # إعداد السيرفر
+          cat > wg0.conf <<EOF
+          [Interface]
+          Address = 10.50.0.1/24
+          ListenPort = 51820
+          PrivateKey = $SERVER_PRIV
+
+          [Peer]
+          PublicKey = $CLIENT_PUB
+          AllowedIPs = 10.50.0.2/32
+          EOF
+
+          sudo mkdir -p /etc/wireguard
+          sudo mv wg0.conf /etc/wireguard/wg0.conf
+          sudo chmod 600 /etc/wireguard/wg0.conf
+          sudo wg-quick up wg0
+
+          # إعداد العميل
+          cat > client.conf <<EOF
+          [Interface]
+          PrivateKey = $CLIENT_PRIV
+          Address = 10.50.0.2/24
+          DNS = 1.1.1.1
+
+          [Peer]
+          PublicKey = $SERVER_PUB
+          Endpoint = $(curl -s ifconfig.me):51820
+          AllowedIPs = 0.0.0.0/0, ::/0
+          PersistentKeepalive = 25
+          EOF
+
+          echo "================ Client Config ================="
+          cat client.conf
+          echo "================================================"
+
+          echo "✅ QR Code (امسحه في تطبيق WireGuard):"
+          qrencode -t ansiutf8 < client.conf
+
+      - name: Keep VPN alive (6 hours)
+        run: sleep 21600
