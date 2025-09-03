@@ -1,33 +1,18 @@
-name: Strong Europe VPN (WireGuard)
+name: Strong VPN Server (WireGuard)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # تشغيل يدوي
 
 jobs:
   vpn:
     runs-on: ubuntu-latest
     steps:
-      - name: Check server location
-        run: |
-          echo "Checking server location..."
-          IP=$(curl -s ifconfig.me)
-          echo "Public IP: $IP"
-          COUNTRY=$(curl -s ipinfo.io/$IP/country)
-          CITY=$(curl -s ipinfo.io/$IP/city)
-          echo "Server is in: $CITY, $COUNTRY"
-
-          # إذا ما كان السيرفر في أوروبا نوقف
-          if [[ "$COUNTRY" != "DE" && "$COUNTRY" != "FR" && "$COUNTRY" != "NL" && "$COUNTRY" != "GB" ]]; then
-            echo "❌ This server is not in Europe. Stopping..."
-            exit 1
-          fi
-
       - name: Install WireGuard
         run: |
           sudo apt update
           sudo apt install -y wireguard qrencode curl
 
-          # مفاتيح
+          # توليد مفاتيح
           wg genkey | tee server_private.key | wg pubkey > server_public.key
           wg genkey | tee client_private.key | wg pubkey > client_public.key
 
@@ -39,13 +24,13 @@ jobs:
           # إعداد السيرفر
           cat > wg0.conf <<EOF
           [Interface]
-          Address = 10.30.0.1/24
+          Address = 10.20.0.1/24
           ListenPort = 51820
           PrivateKey = $SERVER_PRIV
 
           [Peer]
           PublicKey = $CLIENT_PUB
-          AllowedIPs = 10.30.0.2/32
+          AllowedIPs = 10.20.0.2/32
           EOF
 
           sudo mkdir -p /etc/wireguard
@@ -57,7 +42,7 @@ jobs:
           cat > client.conf <<EOF
           [Interface]
           PrivateKey = $CLIENT_PRIV
-          Address = 10.30.0.2/24
+          Address = 10.20.0.2/24
           DNS = 1.1.1.1
 
           [Peer]
@@ -71,10 +56,10 @@ jobs:
           cat client.conf
           echo "================================================"
 
-          echo "✅ QR Code (امسحه في WireGuard):"
+          echo "✅ امسح هذا الكود QR في تطبيق WireGuard:"
           qrencode -t ansiutf8 < client.conf
 
-      - name: Keep alive
+      - name: Keep server alive
         run: |
-          echo "Keeping VPN alive for 6 hours..."
-          sleep 21600
+          echo "Keeping server alive for 6 hours..."
+          sleep 21600   # 6 ساعات
